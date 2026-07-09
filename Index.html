@@ -440,7 +440,7 @@ function attachCardHandlers(container){
   });
 }
 
-async function loadList(opts, reset=true){
+async function loadList(opts, reset=true, fromPopstate=false){
   const { type, slug, title } = opts;
   state.view = 'list';
   state.type = type;
@@ -454,6 +454,9 @@ async function loadList(opts, reset=true){
     renderGridShell(title);
     setGridLoading();
     window.scrollTo({top:0, behavior:'smooth'});
+    if(!fromPopstate){
+      history.pushState({kind:'list', type, slug, title}, '');
+    }
   }
   try{
     const data = await apiGet(buildListUrl(type, slug, state.page));
@@ -465,8 +468,8 @@ async function loadList(opts, reset=true){
   }
 }
 
-function loadHome(){
-  return loadList({type:'moi-cap-nhat', slug:null, title:'Phim mới cập nhật'});
+function loadHome(fromPopstate=false){
+  return loadList({type:'moi-cap-nhat', slug:null, title:'Phim mới cập nhật'}, true, fromPopstate);
 }
 
 function setGridLoading(){
@@ -527,18 +530,21 @@ function extractTotalPages(paginate){
 }
 
 /* ---------------- render: detail view ---------------- */
-async function openDetail(slug){
+async function openDetail(slug, fromPopstate=false){
   state.view = 'detail';
   destroyPlayer();
   app.innerHTML = `<div class="state-msg"><div class="spinner"></div>Đang tải thông tin phim...</div>`;
   window.scrollTo({top:0, behavior:'smooth'});
+  if(!fromPopstate){
+    history.pushState({kind:'detail', slug}, '');
+  }
   try{
     const data = await fetchDetail(slug);
     if(!data.movie) throw new Error('no movie');
     renderDetail(data.movie);
   }catch(err){
     app.innerHTML = `<button class="back-btn" id="backBtn">&larr; Quay lại</button><div class="state-msg error">Không tải được thông tin phim này.</div>`;
-    document.getElementById('backBtn').addEventListener('click', ()=>loadHome());
+    document.getElementById('backBtn').addEventListener('click', ()=>window.history.back());
   }
 }
 
@@ -590,7 +596,7 @@ function renderDetail(movie){
 
   document.getElementById('backBtn').addEventListener('click', ()=>{
     destroyPlayer();
-    loadList({type: state.type, slug: state.slug, title: state.title});
+    window.history.back();
   });
 
   renderServers(episodesData);
@@ -743,8 +749,23 @@ document.querySelectorAll('.nav-item').forEach(item=>{
 });
 document.addEventListener('click', closeAllMenus);
 
+/* ---------------- History API (nút Quay lại dùng history.back()) ---------------- */
+window.addEventListener('popstate', (e)=>{
+  destroyPlayer();
+  const st = e.state;
+  if(!st || st.kind === 'list'){
+    const opts = st
+      ? {type: st.type, slug: st.slug, title: st.title}
+      : {type: 'moi-cap-nhat', slug: null, title: 'Phim mới cập nhật'};
+    loadList(opts, true, true);
+  }else if(st.kind === 'detail'){
+    openDetail(st.slug, true);
+  }
+});
+
 /* ---------------- init ---------------- */
-loadHome();
+history.replaceState({kind:'list', type:'moi-cap-nhat', slug:null, title:'Phim mới cập nhật'}, '');
+loadHome(true);
 </script>
 </body>
 </html>
