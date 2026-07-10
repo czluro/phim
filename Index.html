@@ -327,15 +327,25 @@
   .fav-toggle-btn.active{background:var(--gold);border-color:var(--gold);color:#3a1030;}
   .logout-btn:hover{border-color:var(--red);color:var(--red);}
 
-  .history-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;}
+  .history-list{
+    display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;
+    padding-right:6px;
+    scrollbar-width:thin;
+    scrollbar-color:var(--gold) transparent;
+  }
+  .history-list::-webkit-scrollbar{width:6px;}
+  .history-list::-webkit-scrollbar-track{background:transparent;}
+  .history-list::-webkit-scrollbar-thumb{background:var(--gold);border-radius:999px;opacity:.6;}
+  .history-list::-webkit-scrollbar-thumb:hover{background:var(--teal);}
   .history-item{
     display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;
     background:var(--bg-2);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%;
+    color:var(--text);
   }
   .history-item:hover{border-color:var(--teal);}
   .history-item img{width:42px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#000;}
   .history-item .h-info{min-width:0;}
-  .history-item .h-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .history-item .h-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
   .history-item .h-ep{font-size:11.5px;color:var(--text-dim);}
   .history-empty{color:var(--text-dim);font-size:13.5px;text-align:center;padding:20px 0;}
 </style>
