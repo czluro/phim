@@ -312,6 +312,9 @@
   }
   .form-submit:hover{filter:brightness(1.08);}
   .logout-btn{background:transparent;border:1px solid var(--line);color:var(--text-dim);margin-top:14px;}
+  .modal-switch{text-align:center;font-size:12.5px;color:var(--text-dim);margin:16px 0 0;}
+  .modal-switch button{background:none;border:none;color:var(--teal);font-weight:700;padding:0;font-size:12.5px;}
+  .modal-switch button:hover{text-decoration:underline;}
   .logout-btn:hover{border-color:var(--red);color:var(--red);}
 
   .history-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;}
@@ -375,6 +378,25 @@
       <p class="form-error" id="loginError"></p>
       <button class="form-submit" type="submit">Đăng nhập</button>
     </form>
+    <p class="modal-switch">Chưa có tài khoản? <button type="button" id="goToRegister">Đăng ký ngay</button></p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="registerOverlay">
+  <div class="modal-box">
+    <button class="modal-close" id="registerModalClose" type="button">&times;</button>
+    <h3 class="modal-title">Đăng ký tài khoản</h3>
+    <form id="registerForm">
+      <label class="form-label" for="registerUsername">Tên đăng nhập</label>
+      <input class="form-input" id="registerUsername" type="text" autocomplete="username" required minlength="3">
+      <label class="form-label" for="registerPassword">Mật khẩu</label>
+      <input class="form-input" id="registerPassword" type="password" autocomplete="new-password" required minlength="4">
+      <label class="form-label" for="registerPassword2">Nhập lại mật khẩu</label>
+      <input class="form-input" id="registerPassword2" type="password" autocomplete="new-password" required minlength="4">
+      <p class="form-error" id="registerError"></p>
+      <button class="form-submit" type="submit">Đăng ký</button>
+    </form>
+    <p class="modal-switch">Đã có tài khoản? <button type="button" id="goToLogin">Đăng nhập</button></p>
   </div>
 </div>
 
@@ -872,7 +894,7 @@ window.addEventListener('popstate', (e)=>{
    (artifact) của Claude, chỉ hoạt động khi mở file thật/deploy.
    ========================================================= */
 const AUTH_KEY = 'quank_auth';
-const USERS_FILE = 'users.txt'; // đặt cùng thư mục với file html này
+const AUTH_API = '/auth-api'; // route được Worker url-shortener xử lý (đăng nhập/đăng ký qua Google Sheet)
 const HISTORY_API = '/history-api'; // route được Worker url-shortener xử lý
 
 function safeLocalStorageGet(key){
@@ -897,15 +919,29 @@ function clearAuth(){
   safeLocalStorageRemove(AUTH_KEY);
 }
 
+// fetch có timeout, tránh trường hợp request treo vô hạn khiến UI xoay vòng mãi không phản hồi
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---- lịch sử xem: đọc/ghi qua server, theo đúng username đang đăng nhập ----
 async function fetchHistoryFromServer(username){
-  const res = await fetch(`${HISTORY_API}?action=getHistory&user=${encodeURIComponent(username)}`, {cache:'no-store'});
+  const res = await fetchWithTimeout(
+    `${HISTORY_API}?action=getHistory&user=${encodeURIComponent(username)}`,
+    {cache:'no-store'}
+  );
   if(!res.ok) throw new Error('HTTP ' + res.status);
   const data = await res.json();
   return Array.isArray(data.items) ? data.items : [];
 }
 async function saveHistoryToServer(username, entry){
-  await fetch(HISTORY_API, {
+  await fetchWithTimeout(HISTORY_API, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({action:'saveHistory', user: username, entry})
@@ -929,10 +965,20 @@ function renderAuthArea(){
 function openLoginModal(){
   document.getElementById('loginError').textContent = '';
   document.getElementById('loginForm').reset();
+  document.getElementById('registerOverlay').classList.remove('show');
   document.getElementById('loginOverlay').classList.add('show');
 }
 function closeLoginModal(){
   document.getElementById('loginOverlay').classList.remove('show');
+}
+function openRegisterModal(){
+  document.getElementById('registerError').textContent = '';
+  document.getElementById('registerForm').reset();
+  document.getElementById('loginOverlay').classList.remove('show');
+  document.getElementById('registerOverlay').classList.add('show');
+}
+function closeRegisterModal(){
+  document.getElementById('registerOverlay').classList.remove('show');
 }
 function openHistoryModal(){
   document.getElementById('historyOverlay').classList.add('show');
@@ -954,7 +1000,11 @@ async function renderHistoryList(){
   try{
     items = await fetchHistoryFromServer(user.username);
   }catch(err){
-    el.innerHTML = `<p class="history-empty">Không tải được lịch sử từ server. Thử lại sau.</p>`;
+    console.error('Lỗi tải lịch sử:', err);
+    const reason = err && err.name === 'AbortError'
+      ? 'Server phản hồi quá lâu (quá 12 giây) — kiểm tra lại route /history-api trên Worker và deployment của Apps Script.'
+      : `Lỗi: ${err && err.message ? err.message : err}`;
+    el.innerHTML = `<p class="history-empty">Không tải được lịch sử từ server.<br>${escapeHtml(reason)}</p>`;
     return;
   }
   if(!items.length){
@@ -992,32 +1042,70 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   }
 
   try{
-    const res = await fetch(USERS_FILE, {cache:'no-store'});
-    if(!res.ok) throw new Error(`Server trả về lỗi HTTP ${res.status}`);
-    const text = await res.text();
+    const res = await fetchWithTimeout(AUTH_API, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'login', username, password})
+    });
+    const data = await res.json();
 
-    const isValid = text
-      .split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .some(line => {
-        const [u, p] = line.split('|');
-        return u === username && p === password;
-      });
-
-    if(isValid){
+    if(data.ok){
       setAuth({username});
       closeLoginModal();
       renderAuthArea();
     }else{
-      errEl.textContent = 'Sai tên đăng nhập hoặc mật khẩu.';
+      errEl.textContent = data.error || 'Sai tên đăng nhập hoặc mật khẩu.';
     }
   }catch(err){
-    errEl.textContent = `Không đọc được file "${USERS_FILE}" (${err.message}). Nếu bạn đang mở file bằng cách double-click (đường dẫn bắt đầu bằng file://), trình duyệt sẽ luôn chặn fetch() tới file cục bộ vì lý do bảo mật — hãy test qua trang đã deploy (Netlify) thay vì mở file trực tiếp.`;
+    errEl.textContent = err && err.name === 'AbortError'
+      ? 'Server phản hồi quá lâu, thử lại sau.'
+      : `Không đăng nhập được: ${err.message}`;
   }
 });
 
+document.getElementById('registerForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById('registerError');
+  errEl.textContent = '';
+  const username = document.getElementById('registerUsername').value.trim();
+  const password = document.getElementById('registerPassword').value;
+  const password2 = document.getElementById('registerPassword2').value;
+
+  if(!username || !password || !password2){
+    errEl.textContent = 'Vui lòng nhập đầy đủ thông tin.';
+    return;
+  }
+  if(password !== password2){
+    errEl.textContent = 'Mật khẩu nhập lại không khớp.';
+    return;
+  }
+
+  try{
+    const res = await fetchWithTimeout(AUTH_API, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'register', username, password})
+    });
+    const data = await res.json();
+
+    if(data.ok){
+      setAuth({username});
+      closeRegisterModal();
+      renderAuthArea();
+    }else{
+      errEl.textContent = data.error || 'Đăng ký thất bại, thử lại sau.';
+    }
+  }catch(err){
+    errEl.textContent = err && err.name === 'AbortError'
+      ? 'Server phản hồi quá lâu, thử lại sau.'
+      : `Không đăng ký được: ${err.message}`;
+  }
+});
+
+document.getElementById('goToRegister').addEventListener('click', openRegisterModal);
+document.getElementById('goToLogin').addEventListener('click', openLoginModal);
 document.getElementById('loginModalClose').addEventListener('click', closeLoginModal);
+document.getElementById('registerModalClose').addEventListener('click', closeRegisterModal);
 document.getElementById('historyModalClose').addEventListener('click', closeHistoryModal);
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
   clearAuth();
@@ -1025,7 +1113,7 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
   renderAuthArea();
 });
 // đóng modal khi bấm ra vùng nền tối bên ngoài hộp thoại
-[['loginOverlay', closeLoginModal], ['historyOverlay', closeHistoryModal]].forEach(([id, closeFn])=>{
+[['loginOverlay', closeLoginModal], ['registerOverlay', closeRegisterModal], ['historyOverlay', closeHistoryModal]].forEach(([id, closeFn])=>{
   document.getElementById(id).addEventListener('click', (e)=>{
     if(e.target.id === id) closeFn();
   });
