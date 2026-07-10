@@ -450,6 +450,11 @@ let state = {
   hls: null,
 };
 
+// Mỗi lần điều hướng (mở phim, đổi danh sách...) tăng navToken lên 1.
+// Khi 1 request async trả về, nếu navToken đã đổi (người dùng đã bấm sang chỗ khác)
+// thì request đó bị coi là "cũ", không được phép ghi đè giao diện hiện tại nữa.
+let navToken = 0;
+
 // Tự tạo slug từ nhãn tiếng Việt (bỏ dấu, viết thường, nối gạch ngang)
 const SLUG_OVERRIDES = { 'Nhạc': 'phim-nhac' };
 function slugify(str){
@@ -582,6 +587,10 @@ async function loadList(opts, reset=true, fromPopstate=false){
   state.slug = slug;
   state.title = title;
   closeAllMenus();
+
+  // Nếu là điều hướng mới (reset=true, không phải "xem thêm" cùng trang) -> đánh dấu phiên mới
+  const myToken = reset ? ++navToken : navToken;
+
   if(reset){
     state.page = 1;
     state.movies = [];
@@ -595,10 +604,12 @@ async function loadList(opts, reset=true, fromPopstate=false){
   }
   try{
     const data = await apiGet(buildListUrl(type, slug, state.page));
+    if(myToken !== navToken) return; // người dùng đã bấm sang chỗ khác trong lúc chờ -> bỏ qua
     const items = data.items || [];
     state.movies = state.movies.concat(items);
     renderGridItems(data.paginate, items.length);
   }catch(err){
+    if(myToken !== navToken) return;
     renderGridError();
   }
 }
@@ -668,6 +679,7 @@ function extractTotalPages(paginate){
 async function openDetail(slug, fromPopstate=false){
   state.view = 'detail';
   destroyPlayer();
+  const myToken = ++navToken;
   app.innerHTML = `<div class="state-msg"><div class="spinner"></div>Đang tải thông tin phim...</div>`;
   window.scrollTo({top:0, behavior:'smooth'});
   if(!fromPopstate){
@@ -675,9 +687,11 @@ async function openDetail(slug, fromPopstate=false){
   }
   try{
     const data = await fetchDetail(slug);
+    if(myToken !== navToken) return; // đã bấm sang chỗ khác trong lúc chờ -> bỏ qua, không ghi đè giao diện
     if(!data.movie) throw new Error('no movie');
     renderDetail(data.movie);
   }catch(err){
+    if(myToken !== navToken) return;
     app.innerHTML = `<button class="back-btn" id="backBtn">&larr; Quay lại</button><div class="state-msg error">Không tải được thông tin phim này.</div>`;
     document.getElementById('backBtn').addEventListener('click', ()=>window.history.back());
   }
