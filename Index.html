@@ -315,6 +315,16 @@
   .modal-switch{text-align:center;font-size:12.5px;color:var(--text-dim);margin:16px 0 0;}
   .modal-switch button{background:none;border:none;color:var(--teal);font-weight:700;padding:0;font-size:12.5px;}
   .modal-switch button:hover{text-decoration:underline;}
+  .tab-switch{display:flex;gap:6px;margin-bottom:16px;background:var(--bg-2);border-radius:10px;padding:4px;}
+  .tab-btn{flex:1;background:none;border:none;color:var(--text-dim);font-size:13px;font-weight:700;padding:9px 4px;border-radius:8px;}
+  .tab-btn.active{background:var(--card);color:var(--gold);}
+  .fav-toggle-btn{
+    display:inline-flex;align-items:center;gap:7px;
+    background:var(--card);border:1px solid var(--line);color:var(--text);
+    padding:9px 18px;border-radius:999px;font-size:13.5px;font-weight:700;margin-top:4px;
+  }
+  .fav-toggle-btn:hover{border-color:var(--gold);}
+  .fav-toggle-btn.active{background:var(--gold);border-color:var(--gold);color:#3a1030;}
   .logout-btn:hover{border-color:var(--red);color:var(--red);}
 
   .history-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;}
@@ -403,8 +413,13 @@
 <div class="modal-overlay" id="historyOverlay">
   <div class="modal-box">
     <button class="modal-close" id="historyModalClose" type="button">&times;</button>
-    <h3 class="modal-title">Lịch sử xem phim</h3>
-    <div id="historyList" class="history-list"></div>
+    <h3 class="modal-title">Tài khoản</h3>
+    <div class="tab-switch">
+      <button type="button" class="tab-btn active" id="tabFavoritesBtn">Phim đã lưu</button>
+      <button type="button" class="tab-btn" id="tabHistoryBtn">Phim đã xem</button>
+    </div>
+    <div id="favoritesList" class="history-list"></div>
+    <div id="historyList" class="history-list" style="display:none;"></div>
     <button class="form-submit logout-btn" id="logoutBtn" type="button">Đăng xuất</button>
   </div>
 </div>
@@ -462,8 +477,8 @@ const GENRES = toItems(GENRE_LABELS);
 const COUNTRIES = toItems(COUNTRY_LABELS);
 
 function escapeHtml(str){
-  if(!str) return '';
-  return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  if(str === null || str === undefined || str === '') return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function posterUrl(item){
@@ -690,6 +705,7 @@ function renderDetail(movie){
           ${movie.director ? `<span class="pill">Đạo diễn: ${escapeHtml(movie.director)}</span>` : ''}
         </div>
         <p class="detail-desc">${(movie.description || movie.content || '').replace(/<[^>]*>/g,'')}</p>
+        <button class="fav-toggle-btn" id="favToggleBtn" type="button">☆ Lưu phim</button>
         ${categoryGroupsHtml(movie.category)}
       </div>
     </div>
@@ -709,7 +725,54 @@ function renderDetail(movie){
     window.history.back();
   });
 
+  setupFavToggleButton(movie);
   renderServers(episodesData);
+}
+
+// Gắn nút "Lưu phim": kiểm tra trạng thái hiện tại (nếu đã đăng nhập) và xử lý bấm toggle
+async function setupFavToggleButton(movie){
+  const btn = document.getElementById('favToggleBtn');
+  if(!btn) return;
+  const user = getAuth();
+
+  const setBtnState = (isFav) => {
+    btn.classList.toggle('active', isFav);
+    btn.innerHTML = isFav ? '★ Đã lưu' : '☆ Lưu phim';
+  };
+
+  btn.addEventListener('click', async ()=>{
+    const currentUser = getAuth();
+    if(!currentUser){
+      openLoginModal();
+      return;
+    }
+    const isCurrentlyFav = btn.classList.contains('active');
+    btn.disabled = true;
+    try{
+      if(isCurrentlyFav){
+        await removeFavoriteFromServer(currentUser.username, movie.slug);
+        setBtnState(false);
+      }else{
+        await addFavoriteToServer(currentUser.username, {
+          slug: movie.slug, name: movie.name, poster: posterUrl(movie)
+        });
+        setBtnState(true);
+      }
+    }catch(err){
+      console.error('Lỗi lưu/bỏ lưu phim:', err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  if(user){
+    try{
+      const favorites = await fetchFavoritesFromServer(user.username);
+      setBtnState(favorites.some(f => f.slug === movie.slug));
+    }catch(err){
+      console.error('Không kiểm tra được trạng thái yêu thích:', err);
+    }
+  }
 }
 
 function renderServers(episodesData){
@@ -948,6 +1011,31 @@ async function saveHistoryToServer(username, entry){
   });
 }
 
+// ---- phim yêu thích: đọc/ghi qua server, dùng chung route /history-api (proxy tổng quát) ----
+async function fetchFavoritesFromServer(username){
+  const res = await fetchWithTimeout(
+    `${HISTORY_API}?action=getFavorites&user=${encodeURIComponent(username)}`,
+    {cache:'no-store'}
+  );
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+}
+async function addFavoriteToServer(username, entry){
+  await fetchWithTimeout(HISTORY_API, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action:'addFavorite', user: username, entry})
+  });
+}
+async function removeFavoriteFromServer(username, slug){
+  await fetchWithTimeout(HISTORY_API, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action:'removeFavorite', user: username, slug})
+  });
+}
+
 // ---- render nút đăng nhập / avatar ----
 function renderAuthArea(){
   const el = document.getElementById('authArea');
@@ -982,10 +1070,66 @@ function closeRegisterModal(){
 }
 function openHistoryModal(){
   document.getElementById('historyOverlay').classList.add('show');
-  renderHistoryList();
+  showAccountTab('favorites');
 }
 function closeHistoryModal(){
   document.getElementById('historyOverlay').classList.remove('show');
+}
+function showAccountTab(tab){
+  const favEl = document.getElementById('favoritesList');
+  const histEl = document.getElementById('historyList');
+  const favBtn = document.getElementById('tabFavoritesBtn');
+  const histBtn = document.getElementById('tabHistoryBtn');
+  if(tab === 'favorites'){
+    favEl.style.display = '';
+    histEl.style.display = 'none';
+    favBtn.classList.add('active');
+    histBtn.classList.remove('active');
+    renderFavoritesList();
+  }else{
+    favEl.style.display = 'none';
+    histEl.style.display = '';
+    favBtn.classList.remove('active');
+    histBtn.classList.add('active');
+    renderHistoryList();
+  }
+}
+
+async function renderFavoritesList(){
+  const el = document.getElementById('favoritesList');
+  const user = getAuth();
+  if(!user){
+    el.innerHTML = `<p class="history-empty">Bạn cần đăng nhập để xem phim đã lưu.</p>`;
+    return;
+  }
+  el.innerHTML = `<div class="state-msg"><div class="spinner"></div>Đang tải...</div>`;
+  let items;
+  try{
+    items = await fetchFavoritesFromServer(user.username);
+  }catch(err){
+    console.error('Lỗi tải phim yêu thích:', err);
+    const reason = err && err.name === 'AbortError' ? 'Server phản hồi quá lâu.' : `Lỗi: ${err.message}`;
+    el.innerHTML = `<p class="history-empty">Không tải được danh sách.<br>${escapeHtml(reason)}</p>`;
+    return;
+  }
+  if(!items.length){
+    el.innerHTML = `<p class="history-empty">Chưa có phim nào được lưu.</p>`;
+    return;
+  }
+  el.innerHTML = items.map(it => `
+    <button type="button" class="history-item" data-slug="${escapeHtml(it.slug)}">
+      <img src="${escapeHtml(it.poster || '')}" alt="${escapeHtml(it.name)}" onerror="this.style.visibility='hidden'">
+      <div class="h-info">
+        <div class="h-name">${escapeHtml(it.name)}</div>
+      </div>
+    </button>
+  `).join('');
+  el.querySelectorAll('.history-item').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      closeHistoryModal();
+      openDetail(btn.dataset.slug);
+    });
+  });
 }
 
 async function renderHistoryList(){
@@ -1103,6 +1247,8 @@ document.getElementById('registerForm').addEventListener('submit', async (e)=>{
 });
 
 document.getElementById('goToRegister').addEventListener('click', openRegisterModal);
+document.getElementById('tabFavoritesBtn').addEventListener('click', ()=>showAccountTab('favorites'));
+document.getElementById('tabHistoryBtn').addEventListener('click', ()=>showAccountTab('history'));
 document.getElementById('goToLogin').addEventListener('click', openLoginModal);
 document.getElementById('loginModalClose').addEventListener('click', closeLoginModal);
 document.getElementById('registerModalClose').addEventListener('click', closeRegisterModal);
