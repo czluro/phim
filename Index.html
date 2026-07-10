@@ -965,7 +965,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 
   try{
     const res = await fetch(USERS_FILE, {cache:'no-store'});
-    if(!res.ok) throw new Error('Không đọc được ' + USERS_FILE);
+    if(!res.ok) throw new Error(`Server trả về lỗi HTTP ${res.status}`);
     const text = await res.text();
 
     const isValid = text
@@ -985,7 +985,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
       errEl.textContent = 'Sai tên đăng nhập hoặc mật khẩu.';
     }
   }catch(err){
-    errEl.textContent = `Không đọc được file "${USERS_FILE}". Hãy chắc chắn file này nằm cùng thư mục với trang web.`;
+    errEl.textContent = `Không đọc được file "${USERS_FILE}" (${err.message}). Nếu bạn đang mở file bằng cách double-click (đường dẫn bắt đầu bằng file://), trình duyệt sẽ luôn chặn fetch() tới file cục bộ vì lý do bảo mật — hãy test qua trang đã deploy (Netlify) thay vì mở file trực tiếp.`;
   }
 });
 
