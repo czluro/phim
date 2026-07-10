@@ -751,6 +751,17 @@ function playEpisode(ep){
   const frame = document.getElementById('playerFrame');
   if(!frame) return;
 
+  const authUser = getAuth();
+  if(authUser && currentMovie){
+    saveHistoryToServer(authUser.username, {
+      slug: currentMovie.slug,
+      name: currentMovie.name,
+      poster: posterUrl(currentMovie),
+      episode: ep.name,
+      watchedAt: Date.now()
+    }).catch(()=>{ /* lỗi lưu lịch sử không nên chặn việc xem phim */ });
+  }
+
   if(ep.m3u8){
     frame.innerHTML = `<video id="videoPlayer" controls autoplay playsinline></video>`;
     const video = document.getElementById('videoPlayer');
@@ -852,14 +863,17 @@ window.addEventListener('popstate', (e)=>{
 });
 
 /* =========================================================
-   ĐĂNG NHẬP + LỊCH SỬ XEM (localStorage)
-   Lưu ý: localStorage chỉ hoạt động khi mở file thật ngoài
-   trình duyệt / deploy lên host, KHÔNG hoạt động trong khung
-   xem trước (artifact) của Claude.
+   ĐĂNG NHẬP (localStorage) + LỊCH SỬ XEM (server — đồng bộ đa thiết bị)
+   - Trạng thái đăng nhập vẫn lưu localStorage (chỉ trên máy đó).
+   - Lịch sử xem lưu trên server (Google Sheet qua Apps Script,
+     proxy qua Cloudflare Worker /history-api để tránh lỗi CORS),
+     nên đăng nhập đúng tài khoản ở máy khác vẫn thấy cùng lịch sử.
+   Lưu ý: phần localStorage KHÔNG hoạt động trong khung xem trước
+   (artifact) của Claude, chỉ hoạt động khi mở file thật/deploy.
    ========================================================= */
 const AUTH_KEY = 'quank_auth';
-const HISTORY_KEY = 'quank_history';
 const USERS_FILE = 'users.txt'; // đặt cùng thư mục với file html này
+const HISTORY_API = '/history-api'; // route được Worker url-shortener xử lý
 
 function safeLocalStorageGet(key){
   try{ return localStorage.getItem(key); }catch(e){ return null; }
@@ -883,17 +897,19 @@ function clearAuth(){
   safeLocalStorageRemove(AUTH_KEY);
 }
 
-function getHistory(){
-  const raw = safeLocalStorageGet(HISTORY_KEY);
-  if(!raw) return [];
-  try{ const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; }catch(e){ return []; }
+// ---- lịch sử xem: đọc/ghi qua server, theo đúng username đang đăng nhập ----
+async function fetchHistoryFromServer(username){
+  const res = await fetch(`${HISTORY_API}?action=getHistory&user=${encodeURIComponent(username)}`, {cache:'no-store'});
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
 }
-function addHistory(entry){
-  let list = getHistory();
-  list = list.filter(x => x.slug !== entry.slug);
-  list.unshift(entry);
-  if(list.length > 50) list = list.slice(0, 50);
-  safeLocalStorageSet(HISTORY_KEY, JSON.stringify(list));
+async function saveHistoryToServer(username, entry){
+  await fetch(HISTORY_API, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action:'saveHistory', user: username, entry})
+  });
 }
 
 // ---- render nút đăng nhập / avatar ----
@@ -919,16 +935,28 @@ function closeLoginModal(){
   document.getElementById('loginOverlay').classList.remove('show');
 }
 function openHistoryModal(){
-  renderHistoryList();
   document.getElementById('historyOverlay').classList.add('show');
+  renderHistoryList();
 }
 function closeHistoryModal(){
   document.getElementById('historyOverlay').classList.remove('show');
 }
 
-function renderHistoryList(){
+async function renderHistoryList(){
   const el = document.getElementById('historyList');
-  const items = getHistory();
+  const user = getAuth();
+  if(!user){
+    el.innerHTML = `<p class="history-empty">Bạn cần đăng nhập để xem lịch sử.</p>`;
+    return;
+  }
+  el.innerHTML = `<div class="state-msg"><div class="spinner"></div>Đang tải lịch sử...</div>`;
+  let items;
+  try{
+    items = await fetchHistoryFromServer(user.username);
+  }catch(err){
+    el.innerHTML = `<p class="history-empty">Không tải được lịch sử từ server. Thử lại sau.</p>`;
+    return;
+  }
   if(!items.length){
     el.innerHTML = `<p class="history-empty">Chưa có phim nào trong lịch sử xem.</p>`;
     return;
@@ -1005,8 +1033,19 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 
 /* ---------------- init ---------------- */
 renderAuthArea();
-history.replaceState({kind:'list', type:'moi-cap-nhat', slug:null, title:'Phim mới cập nhật'}, '');
-loadHome(true);
+// Khi F5/reload, trình duyệt vẫn giữ nguyên history.state của lần pushState/replaceState
+// gần nhất trong cùng tab -> đọc lại để khôi phục đúng trang đang xem thay vì luôn nhảy về trang chủ.
+(function initFromHistoryState(){
+  const st = history.state;
+  if(st && st.kind === 'detail' && st.slug){
+    openDetail(st.slug, true);
+  }else if(st && st.kind === 'list'){
+    loadList({type: st.type, slug: st.slug, title: st.title}, true, true);
+  }else{
+    history.replaceState({kind:'list', type:'moi-cap-nhat', slug:null, title:'Phim mới cập nhật'}, '');
+    loadHome(true);
+  }
+})();
 </script>
 </body>
 </html>
