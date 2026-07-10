@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quank Cinema — Xem phim online</title> 
+<title>Quank Cinema — Xem phim online</title>
 <link rel="icon" href="https://quank.netlify.app/favicon.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -39,13 +39,11 @@
   ::selection{background:var(--gold);color:#111;}
   :focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
 
-  /* ---------- sprocket strip (filmstrip motif) ---------- */
+  /* ---------- divider (thay cho họa tiết chấm bi cũ) ---------- */
   .sprockets{
-    height:10px;
-    background-image: radial-gradient(circle, var(--bg) 2.5px, transparent 2.6px);
-    background-size: 20px 10px;
-    background-position: 10px 0;
-    background-color:var(--gold);
+    height:2px;
+    background:linear-gradient(90deg, transparent 0%, var(--gold) 30%, var(--teal) 50%, var(--gold) 70%, transparent 100%);
+    opacity:.5;
   }
 
   /* ---------- header ---------- */
@@ -263,6 +261,70 @@
     .search-wrap{max-width:none;}
     .top-inner{flex-wrap:wrap;}
   }
+  /* ---------- auth (đăng nhập / avatar) ---------- */
+  .auth-area{flex-shrink:0;margin-left:10px;}
+  .login-btn{
+    background:var(--card);border:1px solid var(--line);color:var(--text);
+    padding:10px 18px;border-radius:999px;font-size:13.5px;font-weight:700;
+    transition:.18s;
+  }
+  .login-btn:hover{border-color:var(--gold);color:var(--gold);}
+  .avatar-btn{
+    width:38px;height:38px;border-radius:50%;
+    background:linear-gradient(135deg,var(--gold),var(--teal));
+    border:none;color:#3a1030;font-weight:800;font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+    letter-spacing:0;
+  }
+
+  /* ---------- modal ---------- */
+  .modal-overlay{
+    display:none;position:fixed;inset:0;z-index:100;
+    background:rgba(10,6,12,.72);backdrop-filter:blur(3px);
+    align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-box{
+    background:var(--card);border:1px solid var(--line);border-radius:18px;
+    width:100%;max-width:380px;max-height:80vh;overflow-y:auto;
+    padding:26px 24px;position:relative;
+  }
+  .modal-close{
+    position:absolute;top:14px;right:14px;
+    background:none;border:none;color:var(--text-dim);font-size:22px;line-height:1;
+    width:28px;height:28px;
+  }
+  .modal-close:hover{color:var(--gold);}
+  .modal-title{
+    font-family:var(--font-display);font-size:24px;letter-spacing:1px;
+    color:var(--gold);margin:0 0 18px;
+  }
+  .form-label{display:block;font-size:12.5px;color:var(--text-dim);font-weight:600;margin:12px 0 6px;}
+  .form-input{
+    width:100%;padding:10px 13px;background:var(--bg-2);border:1px solid var(--line);
+    border-radius:10px;color:var(--text);font-size:14px;font-family:var(--font-body);
+  }
+  .form-input:focus{border-color:var(--teal);}
+  .form-error{color:var(--red);font-size:12.5px;margin:10px 0 0;min-height:1em;}
+  .form-submit{
+    width:100%;margin-top:18px;padding:11px;border:none;border-radius:999px;
+    background:var(--gold);color:#3a1030;font-weight:800;font-size:14px;letter-spacing:.3px;
+  }
+  .form-submit:hover{filter:brightness(1.08);}
+  .logout-btn{background:transparent;border:1px solid var(--line);color:var(--text-dim);margin-top:14px;}
+  .logout-btn:hover{border-color:var(--red);color:var(--red);}
+
+  .history-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;}
+  .history-item{
+    display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;
+    background:var(--bg-2);border:1px solid var(--line);cursor:pointer;text-align:left;width:100%;
+  }
+  .history-item:hover{border-color:var(--teal);}
+  .history-item img{width:42px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#000;}
+  .history-item .h-info{min-width:0;}
+  .history-item .h-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .history-item .h-ep{font-size:11.5px;color:var(--text-dim);}
+  .history-empty{color:var(--text-dim);font-size:13.5px;text-align:center;padding:20px 0;}
 </style>
 </head>
 <body>
@@ -275,6 +337,7 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="searchInput" type="text" placeholder="Tìm phim theo tên...">
     </div>
+    <div class="auth-area" id="authArea"></div>
   </div>
 </header>
 <div class="sprockets"></div>
@@ -299,6 +362,30 @@
 </nav>
 
 <main id="app"></main>
+
+<div class="modal-overlay" id="loginOverlay">
+  <div class="modal-box">
+    <button class="modal-close" id="loginModalClose" type="button">&times;</button>
+    <h3 class="modal-title">Đăng nhập</h3>
+    <form id="loginForm">
+      <label class="form-label" for="loginUsername">Tên đăng nhập</label>
+      <input class="form-input" id="loginUsername" type="text" autocomplete="username" required>
+      <label class="form-label" for="loginPassword">Mật khẩu</label>
+      <input class="form-input" id="loginPassword" type="password" autocomplete="current-password" required>
+      <p class="form-error" id="loginError"></p>
+      <button class="form-submit" type="submit">Đăng nhập</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="historyOverlay">
+  <div class="modal-box">
+    <button class="modal-close" id="historyModalClose" type="button">&times;</button>
+    <h3 class="modal-title">Lịch sử xem phim</h3>
+    <div id="historyList" class="history-list"></div>
+    <button class="form-submit logout-btn" id="logoutBtn" type="button">Đăng xuất</button>
+  </div>
+</div>
 
 <script>
 const API_BASE = 'https://phim.nguonc.com/api';
@@ -764,7 +851,160 @@ window.addEventListener('popstate', (e)=>{
   }
 });
 
+/* =========================================================
+   ĐĂNG NHẬP + LỊCH SỬ XEM (localStorage)
+   Lưu ý: localStorage chỉ hoạt động khi mở file thật ngoài
+   trình duyệt / deploy lên host, KHÔNG hoạt động trong khung
+   xem trước (artifact) của Claude.
+   ========================================================= */
+const AUTH_KEY = 'quank_auth';
+const HISTORY_KEY = 'quank_history';
+const USERS_FILE = 'users.txt'; // đặt cùng thư mục với file html này
+
+function safeLocalStorageGet(key){
+  try{ return localStorage.getItem(key); }catch(e){ return null; }
+}
+function safeLocalStorageSet(key, val){
+  try{ localStorage.setItem(key, val); return true; }catch(e){ return false; }
+}
+function safeLocalStorageRemove(key){
+  try{ localStorage.removeItem(key); }catch(e){}
+}
+
+function getAuth(){
+  const raw = safeLocalStorageGet(AUTH_KEY);
+  if(!raw) return null;
+  try{ return JSON.parse(raw); }catch(e){ return null; }
+}
+function setAuth(user){
+  safeLocalStorageSet(AUTH_KEY, JSON.stringify(user));
+}
+function clearAuth(){
+  safeLocalStorageRemove(AUTH_KEY);
+}
+
+function getHistory(){
+  const raw = safeLocalStorageGet(HISTORY_KEY);
+  if(!raw) return [];
+  try{ const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; }catch(e){ return []; }
+}
+function addHistory(entry){
+  let list = getHistory();
+  list = list.filter(x => x.slug !== entry.slug);
+  list.unshift(entry);
+  if(list.length > 50) list = list.slice(0, 50);
+  safeLocalStorageSet(HISTORY_KEY, JSON.stringify(list));
+}
+
+// ---- render nút đăng nhập / avatar ----
+function renderAuthArea(){
+  const el = document.getElementById('authArea');
+  const user = getAuth();
+  if(user){
+    const initial = (user.username || '?').trim().charAt(0).toUpperCase();
+    el.innerHTML = `<button class="avatar-btn" id="avatarBtn" type="button" title="${escapeHtml(user.username)}">${escapeHtml(initial)}</button>`;
+    document.getElementById('avatarBtn').addEventListener('click', openHistoryModal);
+  }else{
+    el.innerHTML = `<button class="login-btn" id="loginBtn" type="button">Đăng nhập</button>`;
+    document.getElementById('loginBtn').addEventListener('click', openLoginModal);
+  }
+}
+
+function openLoginModal(){
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginForm').reset();
+  document.getElementById('loginOverlay').classList.add('show');
+}
+function closeLoginModal(){
+  document.getElementById('loginOverlay').classList.remove('show');
+}
+function openHistoryModal(){
+  renderHistoryList();
+  document.getElementById('historyOverlay').classList.add('show');
+}
+function closeHistoryModal(){
+  document.getElementById('historyOverlay').classList.remove('show');
+}
+
+function renderHistoryList(){
+  const el = document.getElementById('historyList');
+  const items = getHistory();
+  if(!items.length){
+    el.innerHTML = `<p class="history-empty">Chưa có phim nào trong lịch sử xem.</p>`;
+    return;
+  }
+  el.innerHTML = items.map(it => `
+    <button type="button" class="history-item" data-slug="${escapeHtml(it.slug)}">
+      <img src="${escapeHtml(it.poster || '')}" alt="${escapeHtml(it.name)}" onerror="this.style.visibility='hidden'">
+      <div class="h-info">
+        <div class="h-name">${escapeHtml(it.name)}</div>
+        <div class="h-ep">${escapeHtml(it.episode || '')}</div>
+      </div>
+    </button>
+  `).join('');
+  el.querySelectorAll('.history-item').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      closeHistoryModal();
+      openDetail(btn.dataset.slug);
+    });
+  });
+}
+
+// ---- xử lý form đăng nhập: đọc users.txt, parse "user|pass" mỗi dòng ----
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+
+  if(!username || !password){
+    errEl.textContent = 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.';
+    return;
+  }
+
+  try{
+    const res = await fetch(USERS_FILE, {cache:'no-store'});
+    if(!res.ok) throw new Error('Không đọc được ' + USERS_FILE);
+    const text = await res.text();
+
+    const isValid = text
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .some(line => {
+        const [u, p] = line.split('|');
+        return u === username && p === password;
+      });
+
+    if(isValid){
+      setAuth({username});
+      closeLoginModal();
+      renderAuthArea();
+    }else{
+      errEl.textContent = 'Sai tên đăng nhập hoặc mật khẩu.';
+    }
+  }catch(err){
+    errEl.textContent = `Không đọc được file "${USERS_FILE}". Hãy chắc chắn file này nằm cùng thư mục với trang web.`;
+  }
+});
+
+document.getElementById('loginModalClose').addEventListener('click', closeLoginModal);
+document.getElementById('historyModalClose').addEventListener('click', closeHistoryModal);
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  clearAuth();
+  closeHistoryModal();
+  renderAuthArea();
+});
+// đóng modal khi bấm ra vùng nền tối bên ngoài hộp thoại
+[['loginOverlay', closeLoginModal], ['historyOverlay', closeHistoryModal]].forEach(([id, closeFn])=>{
+  document.getElementById(id).addEventListener('click', (e)=>{
+    if(e.target.id === id) closeFn();
+  });
+});
+
 /* ---------------- init ---------------- */
+renderAuthArea();
 history.replaceState({kind:'list', type:'moi-cap-nhat', slug:null, title:'Phim mới cập nhật'}, '');
 loadHome(true);
 </script>
