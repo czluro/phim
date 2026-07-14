@@ -79,7 +79,14 @@
     color:var(--text);font-size:14px;
   }
   .search-wrap input::placeholder{color:var(--text-dim);}
-  .search-wrap svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);opacity:.6;}
+  .search-icon-btn{
+    position:absolute;left:6px;top:50%;transform:translateY(-50%);
+    background:none;border:none;color:var(--text-dim);opacity:.75;
+    padding:7px;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;cursor:pointer;
+  }
+  .search-icon-btn:hover{color:var(--gold);opacity:1;background:var(--card-hover);}
+  .search-wrap input{padding-left:40px;}
 
   /* ---------- nav bar ---------- */
   nav.navbar{
@@ -165,7 +172,6 @@
   .card-title{
     font-weight:700;font-size:14px;line-height:1.3;
     margin:0 0 3px;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   }
   .card-sub{font-size:12px;color:var(--text-dim);}
   .card-meta{font-size:11px;color:var(--teal);margin-top:4px;line-height:1.35;}
@@ -231,6 +237,37 @@
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     color:var(--text-dim);font-size:14px;flex-direction:column;gap:10px;
   }
+
+  /* vùng chạm 2 bên: double-tap để tua 10s, giữ để tăng tốc x2 (chỉ bật trên thiết bị cảm ứng) */
+  .seek-zone{
+    position:absolute;top:0;bottom:46px;width:38%;
+    display:flex;align-items:center;justify-content:center;
+    z-index:5;pointer-events:none;
+  }
+  .seek-zone.left{left:0;}
+  .seek-zone.right{right:0;}
+  @media (hover:none) and (pointer:coarse){
+    .seek-zone{pointer-events:auto;}
+  }
+  .speed-btn{
+    position:absolute;top:10px;right:10px;z-index:7;
+    background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.28);
+    padding:6px 12px;border-radius:999px;font-size:12px;font-weight:800;
+  }
+  .speed-btn:hover{border-color:var(--gold);color:var(--gold);}
+  .speed-menu{
+    position:absolute;top:46px;right:10px;z-index:8;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:6px;display:none;flex-direction:column;min-width:72px;
+    box-shadow:0 10px 24px rgba(0,0,0,.5);
+  }
+  .speed-menu.show{display:flex;}
+  .speed-menu button{
+    background:none;border:none;color:var(--text);text-align:center;
+    padding:7px 8px;border-radius:6px;font-size:12.5px;font-weight:700;
+  }
+  .speed-menu button.active{color:var(--gold);}
+  .speed-menu button:hover{background:var(--card-hover);}
 
   .servers{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 10px;}
   .server-tab{
@@ -357,7 +394,9 @@
   <div class="top-inner">
     <a href="#" class="logo" id="homeLink"><span class="logo-main">Quank</span><span class="logo-sub">Cinema</span></a>
     <div class="search-wrap">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <button type="button" id="searchBtn" class="search-icon-btn" aria-label="Tìm kiếm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
       <input id="searchInput" type="text" placeholder="Tìm phim theo tên...">
     </div>
     <div class="auth-area" id="authArea"></div>
@@ -848,11 +887,188 @@ function renderEpisodes(items){
 }
 
 /* ---------------- player ---------------- */
+let currentGestureCleanup = null;
+
 function destroyPlayer(){
   if(state.hls){
     try{ state.hls.destroy(); }catch(e){}
     state.hls = null;
   }
+  if(currentGestureCleanup){
+    try{ currentGestureCleanup(); }catch(e){}
+    currentGestureCleanup = null;
+  }
+}
+
+// Gắn thao tác kiểu YouTube vào video: double-tap 2 bên để tua ±10s, giữ 2 bên (cảm ứng)
+// hoặc giữ phím Shift (máy tính) để tăng tốc x2, và nút chọn tốc độ phát tùy chỉnh.
+function attachPlayerGestures(video, frame){
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  let normalRate = 1;
+
+  const leftZone = document.createElement('div');
+  leftZone.className = 'seek-zone left';
+
+  const rightZone = document.createElement('div');
+  rightZone.className = 'seek-zone right';
+
+  const speedBtn = document.createElement('button');
+  speedBtn.type = 'button';
+  speedBtn.className = 'speed-btn';
+  speedBtn.textContent = '1x';
+
+  const speedMenu = document.createElement('div');
+  speedMenu.className = 'speed-menu';
+  speedMenu.innerHTML = SPEEDS.map(s => `<button type="button" data-speed="${s}" class="${s===1?'active':''}">${s}x</button>`).join('');
+
+  frame.appendChild(leftZone);
+  frame.appendChild(rightZone);
+  frame.appendChild(speedBtn);
+  frame.appendChild(speedMenu);
+
+  function setSpeedLabel(rate){
+    speedBtn.textContent = rate + 'x';
+    speedMenu.querySelectorAll('button').forEach(b=>{
+      b.classList.toggle('active', Number(b.dataset.speed) === rate);
+    });
+  }
+
+  function onSpeedBtnClick(e){
+    e.stopPropagation();
+    speedMenu.classList.toggle('show');
+  }
+  speedBtn.addEventListener('click', onSpeedBtnClick);
+  speedMenu.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const rate = Number(btn.dataset.speed);
+      normalRate = rate;
+      video.playbackRate = rate;
+      setSpeedLabel(rate);
+      speedMenu.classList.remove('show');
+    });
+  });
+  function onDocClickCloseMenu(){ speedMenu.classList.remove('show'); }
+  document.addEventListener('click', onDocClickCloseMenu);
+
+  function vibrate(ms){
+    try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){}
+  }
+
+  // Tua ±10s: chỉ phản hồi rung (mobile), không hiện icon/badge gì thêm
+  function seekBy(seconds){
+    if(!isFinite(video.duration)) return;
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    vibrate(35);
+  }
+
+  function setupTouchZone(zone, direction){
+    let lastTapAt = 0;
+    let holdTimer = null;
+    let isHolding = false;
+
+    zone.addEventListener('touchstart', ()=>{
+      const now = Date.now();
+      if(now - lastTapAt < 300){
+        clearTimeout(holdTimer);
+        lastTapAt = 0;
+        seekBy(direction * 10);
+        return;
+      }
+      lastTapAt = now;
+      holdTimer = setTimeout(()=>{
+        isHolding = true;
+        normalRate = video.playbackRate;
+        video.playbackRate = 2;
+      }, 380);
+    }, {passive:true});
+
+    const endHold = ()=>{
+      clearTimeout(holdTimer);
+      if(isHolding){
+        isHolding = false;
+        video.playbackRate = normalRate || 1;
+      }
+    };
+    zone.addEventListener('touchend', endHold);
+    zone.addEventListener('touchcancel', endHold);
+  }
+  setupTouchZone(leftZone, -1);
+  setupTouchZone(rightZone, 1);
+
+  // ---- Space: bấm (không cần giữ) để play/pause, như phím tắt mặc định của trình duyệt ----
+  function onSpaceKeyDown(e){
+    if(e.code !== 'Space') return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA') return; // không chặn khi đang gõ ô tìm kiếm/form
+    e.preventDefault();
+    if(e.repeat) return; // giữ Space không lặp lại play/pause liên tục
+    if(video.paused) video.play(); else video.pause();
+  }
+
+  // ---- giữ phím Shift để tăng tốc x2 (máy tính) ----
+  // Dùng Shift thay vì Space vì Shift là phím "modifier": hệ điều hành/trình duyệt hầu như
+  // không bao giờ tự sinh ra các keydown "auto-repeat" giả cho modifier khi giữ phím (khác với
+  // phím ký tự như Space, vốn ở một số máy sẽ gửi liên tục từng cặp keyup+keydown giả trong lúc
+  // vẫn đang giữ thật, khiến logic cũ bị hiểu nhầm là bấm-nhả liên tục -> spam play/pause).
+  let shiftHolding = false;
+  let shiftReleaseTimer = null; // vẫn giữ một lớp debounce nhỏ để phòng hờ, không tốn gì cả
+
+  function releaseShiftHold(){
+    if(!shiftHolding) return;
+    shiftHolding = false;
+    video.playbackRate = normalRate || 1;
+  }
+
+  function onKeyDown(e){
+    if(e.key !== 'Shift') return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if(shiftReleaseTimer){
+      clearTimeout(shiftReleaseTimer);
+      shiftReleaseTimer = null;
+    }
+    if(shiftHolding) return; // đã đang giữ rồi thì bỏ qua các lần lặp
+    shiftHolding = true;
+    normalRate = video.playbackRate;
+    video.playbackRate = 2;
+  }
+  function onKeyUp(e){
+    if(e.key !== 'Shift' || !shiftHolding) return;
+    // Đợi một khoảng rất ngắn trước khi nhả thật — nếu có keydown Shift mới tới trong lúc chờ
+    // (trường hợp hiếm gặp nào đó vẫn phát sinh lặp giả) thì huỷ lệnh nhả, coi như vẫn đang giữ.
+    if(shiftReleaseTimer) clearTimeout(shiftReleaseTimer);
+    shiftReleaseTimer = setTimeout(()=>{
+      shiftReleaseTimer = null;
+      releaseShiftHold();
+    }, 70);
+  }
+  // Nếu bấm giữ Shift rồi Alt+Tab sang cửa sổ/tab khác, phím keyup có thể không bao giờ
+  // được gửi tới trang -> tốc độ sẽ bị kẹt ở x2 mãi. Khi cửa sổ mất focus, tự trả về tốc độ
+  // bình thường.
+  function onWindowBlur(){
+    if(shiftReleaseTimer){
+      clearTimeout(shiftReleaseTimer);
+      shiftReleaseTimer = null;
+    }
+    releaseShiftHold();
+  }
+
+  document.addEventListener('keydown', onSpaceKeyDown);
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onWindowBlur);
+  currentGestureCleanup = () => {
+    if(shiftReleaseTimer){
+      clearTimeout(shiftReleaseTimer);
+      shiftReleaseTimer = null;
+    }
+    document.removeEventListener('keydown', onSpaceKeyDown);
+    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keyup', onKeyUp);
+    document.removeEventListener('click', onDocClickCloseMenu);
+    window.removeEventListener('blur', onWindowBlur);
+  };
 }
 
 function playEpisode(ep){
@@ -874,6 +1090,7 @@ function playEpisode(ep){
   if(ep.m3u8){
     frame.innerHTML = `<video id="videoPlayer" controls autoplay playsinline></video>`;
     const video = document.getElementById('videoPlayer');
+    attachPlayerGestures(video, frame);
     if(window.Hls && Hls.isSupported()){
       const hls = new Hls();
       hls.loadSource(ep.m3u8);
@@ -900,18 +1117,21 @@ function playEpisode(ep){
 }
 
 /* ---------------- search ---------------- */
-let searchTimer = null;
-searchInput.addEventListener('input', e=>{
-  const val = e.target.value.trim();
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(()=>{
-    destroyPlayer();
-    if(val.length >= 2){
-      loadList({type:'search', slug: val, title:`Kết quả cho "${val}"`});
-    }else if(val.length === 0){
-      loadHome();
-    }
-  }, 450);
+function runSearch(){
+  const val = searchInput.value.trim();
+  destroyPlayer();
+  if(val.length >= 1){
+    loadList({type:'search', slug: val, title:`Kết quả cho "${val}"`});
+  }else{
+    loadHome();
+  }
+}
+document.getElementById('searchBtn').addEventListener('click', runSearch);
+searchInput.addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    runSearch();
+  }
 });
 
 homeLink.addEventListener('click', e=>{
