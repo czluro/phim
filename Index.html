@@ -23,6 +23,7 @@
     --radius: 14px;
     --font-display: 'Bebas Neue', sans-serif;
     --font-body: 'Inter', sans-serif;
+    --ctrl-h: 48px;
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
@@ -231,6 +232,8 @@
     width:100%;aspect-ratio:16/9;background:#000;
     border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);
     position:relative;
+    touch-action:none;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
   }
   .player-frame video, .player-frame iframe{width:100%;height:100%;border:0;display:block;}
   .player-placeholder{
@@ -238,14 +241,17 @@
     color:var(--text-dim);font-size:14px;flex-direction:column;gap:10px;
   }
 
-  /* vùng chạm 2 bên: double-tap để tua 10s, giữ để tăng tốc x2 (chỉ bật trên thiết bị cảm ứng) */
+  /* vùng chạm: 2 bên = double-tap tua 10s + giữ tăng tốc x2, giữa = chỉ ẩn/hiện thanh điều khiển
+     (chỉ nhận thao tác chạm trên thiết bị cảm ứng; trên máy tính pointer-events:none để chuột
+     "xuyên qua" xuống thẻ video/nút bấm phía dưới) */
   .seek-zone{
-    position:absolute;top:0;bottom:46px;width:38%;
+    position:absolute;top:0;bottom:var(--ctrl-h);width:38%;
     display:flex;align-items:center;justify-content:center;
     z-index:5;pointer-events:none;
   }
   .seek-zone.left{left:0;}
   .seek-zone.right{right:0;}
+  .seek-zone.mid{left:38%;right:38%;width:auto;}
   @media (hover:none) and (pointer:coarse){
     .seek-zone{pointer-events:auto;}
   }
@@ -253,6 +259,7 @@
     position:absolute;top:10px;right:10px;z-index:7;
     background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.28);
     padding:6px 12px;border-radius:999px;font-size:12px;font-weight:800;
+    opacity:1;transition:opacity .25s ease;
   }
   .speed-btn:hover{border-color:var(--gold);color:var(--gold);}
   .speed-menu{
@@ -268,6 +275,55 @@
   }
   .speed-menu button.active{color:var(--gold);}
   .speed-menu button:hover{background:var(--card-hover);}
+
+  /* ---------- thanh điều khiển tùy chỉnh (thay controls mặc định của trình duyệt) ---------- */
+  .ctrl-bar{
+    position:absolute;left:0;right:0;bottom:0;height:var(--ctrl-h);z-index:6;
+    display:flex;align-items:center;gap:8px;padding:0 8px;
+    background:linear-gradient(0deg, rgba(0,0,0,.8) 0%, rgba(0,0,0,.45) 65%, transparent 100%);
+    opacity:1;transition:opacity .25s ease;pointer-events:auto;
+  }
+  .player-frame.controls-hidden .ctrl-bar,
+  .player-frame.controls-hidden .speed-btn{opacity:0;pointer-events:none;}
+  .ctrl-btn{
+    background:none;border:none;color:#fff;padding:6px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;border-radius:8px;
+  }
+  .ctrl-btn:hover{color:var(--gold);background:rgba(255,255,255,.12);}
+  .ctrl-time{
+    color:#fff;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;
+    flex:0 0 auto;opacity:.9;
+  }
+  .ctrl-progress{
+    position:relative;flex:1;height:22px;display:flex;align-items:center;
+    cursor:pointer;touch-action:none;
+  }
+  .ctrl-progress-track{position:relative;width:100%;height:4px;background:rgba(255,255,255,.3);border-radius:999px;}
+  .ctrl-progress-buffered{position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(255,255,255,.42);border-radius:999px;}
+  .ctrl-progress-played{position:absolute;top:0;left:0;height:100%;width:0%;background:var(--gold);border-radius:999px;}
+  .ctrl-progress-handle{
+    position:absolute;top:50%;left:0%;width:12px;height:12px;border-radius:50%;
+    background:var(--gold);transform:translate(-50%,-50%);
+    box-shadow:0 0 0 3px rgba(244,166,198,.28);transition:transform .15s ease;
+  }
+  .ctrl-progress:hover .ctrl-progress-handle{transform:translate(-50%,-50%) scale(1.15);}
+  .ctrl-spinner{position:absolute;inset:0;z-index:4;display:none;align-items:center;justify-content:center;pointer-events:none;}
+  .player-frame.buffering .ctrl-spinner{display:flex;}
+  .ctrl-spinner span{
+    width:36px;height:36px;border-radius:50%;border:3px solid rgba(255,255,255,.25);
+    border-top-color:var(--gold);animation:ctrlspin .8s linear infinite;
+  }
+  @keyframes ctrlspin{to{transform:rotate(360deg);}}
+  .player-note{
+    margin-top:8px;font-size:12.5px;color:var(--text-dim);min-height:16px;
+  }
+  .player-note.warn{color:var(--red);}
+  .note-switch-btn{
+    background:none;border:1px solid var(--line);color:var(--text);
+    padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;
+    margin-left:8px;vertical-align:middle;
+  }
+  .note-switch-btn:hover{border-color:var(--gold);color:var(--gold);}
 
   .servers{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 10px;}
   .server-tab{
@@ -778,6 +834,7 @@ function renderDetail(movie){
       <div class="player-frame" id="playerFrame">
         <div class="player-placeholder">Chọn tập phim bên dưới để bắt đầu xem</div>
       </div>
+      <div class="player-note" id="playerNote"></div>
       <div class="servers" id="servers"></div>
       <div class="episodes" id="episodes"></div>
     </div>
@@ -900,17 +957,46 @@ function destroyPlayer(){
   }
 }
 
-// Gắn thao tác kiểu YouTube vào video: double-tap 2 bên để tua ±10s, giữ 2 bên (cảm ứng)
-// hoặc giữ phím Shift (máy tính) để tăng tốc x2, và nút chọn tốc độ phát tùy chỉnh.
+// Player tùy chỉnh hoàn toàn (không dùng thẻ <video controls> mặc định của trình duyệt nữa).
+// Lý do đổi: controls mặc định của trình duyệt có lớp cử chỉ chạm riêng (double-tap trên video
+// dễ bị hệ điều hành/trình duyệt hiểu thành zoom trang), nó luôn "tranh" sự kiện chạm với JS của
+// mình. Bỏ hẳn controls mặc định + tự vẽ thanh điều khiển thì mình toàn quyền xử lý cử chỉ.
+//
+// Chốt lỗi double-tap trước đây: chạm 2 lần bị trình duyệt hiểu thành zoom/thoát-zoom trang vì
+// (1) vùng chạm dùng touchstart với {passive:true} nên không thể preventDefault, và (2) không có
+// CSS touch-action nào chặn cử chỉ zoom mặc định của trình duyệt trên vùng đó. Sửa bằng cách:
+// touch-action:none trên toàn khung player (chặn zoom/pan mặc định ngay từ CSS, không phụ thuộc
+// JS) + chuyển sang Pointer Events (preventDefault được, không phân biệt chuột/tay rời rạc như
+// touch event).
+//
+// Thao tác: double-tap 2 bên = tua ±10s (rung nhẹ trên Android, iOS không hỗ trợ rung),
+// giữ 2 bên (tay) hoặc giữ Shift (bàn phím) = tăng tốc x2, 1 chạm bất kỳ chỗ nào trên video
+// (tay) = ẩn/hiện thanh điều khiển, click (chuột) = phát/tạm dừng.
 function attachPlayerGestures(video, frame){
   const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
   let normalRate = 1;
+  let dragging = false; // đang kéo thanh tua bằng tay/chuột
+
+  frame.classList.remove('controls-hidden');
+  frame.classList.remove('buffering');
+
+  const ICON_PLAY = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><polygon points="6 3 20 12 6 21"/></svg>';
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+  const ICON_VOL_HIGH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+  const ICON_VOL_MUTE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+  const ICON_EXPAND = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+  const ICON_SHRINK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3a2 2 0 0 1-2 2H4"/><path d="M15 3v3a2 2 0 0 0 2 2h3"/><path d="M9 21v-3a2 2 0 0 0-2-2H4"/><path d="M15 21v-3a2 2 0 0 1 2-2h3"/></svg>';
 
   const leftZone = document.createElement('div');
   leftZone.className = 'seek-zone left';
-
   const rightZone = document.createElement('div');
   rightZone.className = 'seek-zone right';
+  const midZone = document.createElement('div');
+  midZone.className = 'seek-zone mid';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'ctrl-spinner';
+  spinner.innerHTML = '<span></span>';
 
   const speedBtn = document.createElement('button');
   speedBtn.type = 'button';
@@ -921,22 +1007,162 @@ function attachPlayerGestures(video, frame){
   speedMenu.className = 'speed-menu';
   speedMenu.innerHTML = SPEEDS.map(s => `<button type="button" data-speed="${s}" class="${s===1?'active':''}">${s}x</button>`).join('');
 
+  const ctrlBar = document.createElement('div');
+  ctrlBar.className = 'ctrl-bar';
+  ctrlBar.innerHTML = `
+    <button type="button" class="ctrl-btn ctrl-play" aria-label="Phát/Tạm dừng"></button>
+    <span class="ctrl-time ctrl-cur">0:00</span>
+    <div class="ctrl-progress">
+      <div class="ctrl-progress-track">
+        <div class="ctrl-progress-buffered"></div>
+        <div class="ctrl-progress-played"></div>
+        <div class="ctrl-progress-handle"></div>
+      </div>
+    </div>
+    <span class="ctrl-time ctrl-dur">0:00</span>
+    <button type="button" class="ctrl-btn ctrl-mute" aria-label="Tắt/Bật tiếng"></button>
+    <button type="button" class="ctrl-btn ctrl-fs" aria-label="Toàn màn hình"></button>
+  `;
+
   frame.appendChild(leftZone);
   frame.appendChild(rightZone);
+  frame.appendChild(midZone);
+  frame.appendChild(spinner);
+  frame.appendChild(ctrlBar);
   frame.appendChild(speedBtn);
   frame.appendChild(speedMenu);
 
+  const playBtn = ctrlBar.querySelector('.ctrl-play');
+  const muteBtn = ctrlBar.querySelector('.ctrl-mute');
+  const fsBtn = ctrlBar.querySelector('.ctrl-fs');
+  const curTimeEl = ctrlBar.querySelector('.ctrl-cur');
+  const durTimeEl = ctrlBar.querySelector('.ctrl-dur');
+  const progressEl = ctrlBar.querySelector('.ctrl-progress');
+  const bufferedEl = ctrlBar.querySelector('.ctrl-progress-buffered');
+  const playedEl = ctrlBar.querySelector('.ctrl-progress-played');
+  const handleEl = ctrlBar.querySelector('.ctrl-progress-handle');
+
+  /* ---------- ẩn/hiện thanh điều khiển tự động ---------- */
+  let hideTimer = null;
+  function showControls(){ frame.classList.remove('controls-hidden'); }
+  function scheduleHideControls(){
+    clearTimeout(hideTimer);
+    if(video.paused) return; // đang dừng thì luôn hiện, không tự ẩn
+    hideTimer = setTimeout(()=>{
+      if(dragging) return;
+      frame.classList.add('controls-hidden');
+      speedMenu.classList.remove('show');
+    }, 3000);
+  }
+  function bumpControls(){ showControls(); scheduleHideControls(); }
+  function onFrameMouseMove(){ bumpControls(); }
+  frame.addEventListener('mousemove', onFrameMouseMove);
+
+  /* ---------- định dạng thời gian + đồng bộ thanh tua ---------- */
+  function fmtTime(s){
+    if(!isFinite(s) || s < 0) s = 0;
+    s = Math.floor(s);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    const ss = String(sec).padStart(2,'0');
+    return h>0 ? `${h}:${String(m).padStart(2,'0')}:${ss}` : `${m}:${ss}`;
+  }
+  function updateProgressUI(){
+    const dur = video.duration, cur = video.currentTime;
+    const pct = (isFinite(dur) && dur>0) ? Math.max(0,Math.min(100,(cur/dur)*100)) : 0;
+    playedEl.style.width = pct + '%';
+    handleEl.style.left = pct + '%';
+    curTimeEl.textContent = fmtTime(cur);
+    durTimeEl.textContent = isFinite(dur) ? fmtTime(dur) : '0:00';
+    if(video.buffered && video.buffered.length){
+      try{
+        const end = video.buffered.end(video.buffered.length-1);
+        bufferedEl.style.width = ((isFinite(dur)&&dur>0) ? Math.min(100,(end/dur)*100) : 0) + '%';
+      }catch(e){}
+    }
+  }
+
+  /* ---------- phát / tạm dừng ---------- */
+  function updatePlayIcon(){ playBtn.innerHTML = video.paused ? ICON_PLAY : ICON_PAUSE; }
+  function togglePlay(){ if(video.paused) video.play().catch(()=>{}); else video.pause(); }
+  playBtn.addEventListener('click', (e)=>{ e.stopPropagation(); togglePlay(); bumpControls(); });
+  video.addEventListener('click', ()=>{ togglePlay(); bumpControls(); }); // click chuột thật trên video (chạm tay không lọt tới đây, đã bắt ở các seek-zone)
+
+  /* ---------- tắt/bật tiếng ---------- */
+  function updateMuteIcon(){ muteBtn.innerHTML = (video.muted || video.volume===0) ? ICON_VOL_MUTE : ICON_VOL_HIGH; }
+  muteBtn.addEventListener('click', (e)=>{ e.stopPropagation(); video.muted = !video.muted; updateMuteIcon(); bumpControls(); });
+
+  /* ---------- toàn màn hình ---------- */
+  function isFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function updateFsIcon(){ fsBtn.innerHTML = isFs() ? ICON_SHRINK : ICON_EXPAND; }
+  function toggleFullscreen(){
+    try{
+      if(isFs()){
+        if(document.exitFullscreen) document.exitFullscreen();
+        else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }else if(frame.requestFullscreen){
+        frame.requestFullscreen();
+      }else if(frame.webkitRequestFullscreen){
+        frame.webkitRequestFullscreen();
+      }else if(video.webkitEnterFullscreen){
+        video.webkitEnterFullscreen(); // Safari iOS cũ: chỉ full được đúng thẻ video gốc
+      }
+    }catch(e){}
+  }
+  fsBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleFullscreen(); bumpControls(); });
+  document.addEventListener('fullscreenchange', updateFsIcon);
+  document.addEventListener('webkitfullscreenchange', updateFsIcon);
+
+  /* ---------- kéo/chạm thanh tua (dùng chung 1 code path cho cả chuột lẫn tay) ---------- */
+  function ratioFromEvent(e){
+    const rect = progressEl.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  }
+  progressEl.addEventListener('pointerdown', (e)=>{
+    e.stopPropagation();
+    dragging = true;
+    try{ progressEl.setPointerCapture(e.pointerId); }catch(err){}
+    if(isFinite(video.duration)) video.currentTime = ratioFromEvent(e) * video.duration;
+    updateProgressUI();
+    showControls();
+  });
+  progressEl.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    if(isFinite(video.duration)) video.currentTime = ratioFromEvent(e) * video.duration;
+    updateProgressUI();
+  });
+  function endDrag(){
+    if(!dragging) return;
+    dragging = false;
+    scheduleHideControls();
+  }
+  progressEl.addEventListener('pointerup', endDrag);
+  progressEl.addEventListener('pointercancel', endDrag);
+
+  video.addEventListener('loadedmetadata', updateProgressUI);
+  video.addEventListener('durationchange', updateProgressUI);
+  video.addEventListener('progress', updateProgressUI);
+  video.addEventListener('timeupdate', ()=>{ if(!dragging) updateProgressUI(); });
+  video.addEventListener('play', ()=>{ updatePlayIcon(); scheduleHideControls(); });
+  video.addEventListener('pause', ()=>{ updatePlayIcon(); showControls(); clearTimeout(hideTimer); });
+  video.addEventListener('volumechange', updateMuteIcon);
+  video.addEventListener('waiting', ()=> frame.classList.add('buffering'));
+  video.addEventListener('playing', ()=> frame.classList.remove('buffering'));
+  video.addEventListener('canplay', ()=> frame.classList.remove('buffering'));
+
+  updatePlayIcon();
+  updateMuteIcon();
+  updateFsIcon();
+  updateProgressUI();
+  bumpControls();
+
+  /* ---------- nút chọn tốc độ phát ---------- */
   function setSpeedLabel(rate){
     speedBtn.textContent = rate + 'x';
     speedMenu.querySelectorAll('button').forEach(b=>{
       b.classList.toggle('active', Number(b.dataset.speed) === rate);
     });
   }
-
-  function onSpeedBtnClick(e){
-    e.stopPropagation();
-    speedMenu.classList.toggle('show');
-  }
+  function onSpeedBtnClick(e){ e.stopPropagation(); speedMenu.classList.toggle('show'); bumpControls(); }
   speedBtn.addEventListener('click', onSpeedBtnClick);
   speedMenu.querySelectorAll('button').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
@@ -946,6 +1172,7 @@ function attachPlayerGestures(video, frame){
       video.playbackRate = rate;
       setSpeedLabel(rate);
       speedMenu.classList.remove('show');
+      bumpControls();
     });
   });
   function onDocClickCloseMenu(){ speedMenu.classList.remove('show'); }
@@ -955,46 +1182,74 @@ function attachPlayerGestures(video, frame){
     try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){}
   }
 
-  // Tua ±10s: chỉ phản hồi rung (mobile), không hiện icon/badge gì thêm
+  // Tua ±10s: chỉ phản hồi rung (Android; iOS Safari không có API rung), không hiện icon/badge gì thêm
   function seekBy(seconds){
     if(!isFinite(video.duration)) return;
     video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
     vibrate(35);
+    updateProgressUI();
+    bumpControls();
   }
 
-  function setupTouchZone(zone, direction){
-    let lastTapAt = 0;
-    let holdTimer = null;
-    let isHolding = false;
+  // 2 bên: 1 chạm = ẩn/hiện thanh điều khiển (sau 300ms không có chạm thứ 2), chạm 2 lần nhanh
+  // = tua ±10s, giữ nguyên tay = tăng tốc x2. Chỉ xử lý pointerType 'touch' — chuột thật thì
+  // pointer-events:none (xem CSS) nên rơi thẳng xuống thẻ video, dùng click ở trên để play/pause.
+  function setupSeekZone(zone, direction){
+    let tapCount = 0, tapTimer = null, holdTimer = null, holding = false;
+    let startX = 0, startY = 0;
 
-    zone.addEventListener('touchstart', ()=>{
-      const now = Date.now();
-      if(now - lastTapAt < 300){
-        clearTimeout(holdTimer);
-        lastTapAt = 0;
-        seekBy(direction * 10);
-        return;
-      }
-      lastTapAt = now;
+    zone.addEventListener('pointerdown', (e)=>{
+      if(e.pointerType === 'mouse') return;
+      e.preventDefault(); // chặn cử chỉ zoom/thoát-zoom mặc định khi chạm nhanh 2 lần
+      startX = e.clientX; startY = e.clientY;
+      clearTimeout(holdTimer);
       holdTimer = setTimeout(()=>{
-        isHolding = true;
+        holding = true;
         normalRate = video.playbackRate;
         video.playbackRate = 2;
       }, 380);
-    }, {passive:true});
+    }, {passive:false});
 
-    const endHold = ()=>{
+    function release(e){
+      if(e.pointerType === 'mouse') return;
       clearTimeout(holdTimer);
-      if(isHolding){
-        isHolding = false;
+      if(holding){
+        holding = false;
         video.playbackRate = normalRate || 1;
+        return;
       }
-    };
-    zone.addEventListener('touchend', endHold);
-    zone.addEventListener('touchcancel', endHold);
+      const dx = Math.abs(e.clientX - startX), dy = Math.abs(e.clientY - startY);
+      if(dx > 14 || dy > 14) return; // di chuyển xa = vuốt, không tính là chạm
+
+      tapCount++;
+      if(tapCount === 1){
+        tapTimer = setTimeout(()=>{ tapCount = 0; bumpControls(); }, 300);
+      }else{
+        clearTimeout(tapTimer);
+        tapCount = 0;
+        seekBy(direction * 10);
+      }
+    }
+    zone.addEventListener('pointerup', release);
+    zone.addEventListener('pointercancel', ()=>{
+      clearTimeout(holdTimer);
+      if(holding){ holding = false; video.playbackRate = normalRate || 1; }
+      tapCount = 0;
+      clearTimeout(tapTimer);
+    });
   }
-  setupTouchZone(leftZone, -1);
-  setupTouchZone(rightZone, 1);
+  setupSeekZone(leftZone, -1);
+  setupSeekZone(rightZone, 1);
+
+  // Vùng giữa: chỉ 1 chạm để ẩn/hiện thanh điều khiển, không tua/không giữ tăng tốc.
+  midZone.addEventListener('pointerdown', (e)=>{
+    if(e.pointerType === 'mouse') return;
+    e.preventDefault();
+  }, {passive:false});
+  midZone.addEventListener('pointerup', (e)=>{
+    if(e.pointerType === 'mouse') return;
+    bumpControls();
+  });
 
   // ---- Space: bấm (không cần giữ) để play/pause, như phím tắt mặc định của trình duyệt ----
   function onSpaceKeyDown(e){
@@ -1003,7 +1258,8 @@ function attachPlayerGestures(video, frame){
     if(tag === 'INPUT' || tag === 'TEXTAREA') return; // không chặn khi đang gõ ô tìm kiếm/form
     e.preventDefault();
     if(e.repeat) return; // giữ Space không lặp lại play/pause liên tục
-    if(video.paused) video.play(); else video.pause();
+    togglePlay();
+    bumpControls();
   }
 
   // ---- giữ phím Shift để tăng tốc x2 (máy tính) ----
@@ -1063,18 +1319,42 @@ function attachPlayerGestures(video, frame){
       clearTimeout(shiftReleaseTimer);
       shiftReleaseTimer = null;
     }
+    clearTimeout(hideTimer);
     document.removeEventListener('keydown', onSpaceKeyDown);
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
     document.removeEventListener('click', onDocClickCloseMenu);
+    document.removeEventListener('fullscreenchange', updateFsIcon);
+    document.removeEventListener('webkitfullscreenchange', updateFsIcon);
     window.removeEventListener('blur', onWindowBlur);
+    frame.removeEventListener('mousemove', onFrameMouseMove);
   };
 }
 
-function playEpisode(ep){
+// Ghi chú dưới player, kèm nút chuyển đổi giữa 2 chế độ phát (nếu chuyển được).
+// switchTo: 'embed' | 'm3u8' | null (null = không hiện nút)
+let currentEpPlaying = null;
+function setPlayerNote(text, isWarn, switchTo){
+  const el = document.getElementById('playerNote');
+  if(!el) return;
+  el.classList.toggle('warn', !!isWarn);
+  el.textContent = '';
+  el.appendChild(document.createTextNode(text || ''));
+  if(switchTo && currentEpPlaying){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'note-switch-btn';
+    btn.textContent = switchTo === 'embed' ? 'Chuyển sang player nhúng' : 'Thử lại player Quank (m3u8)';
+    btn.addEventListener('click', ()=> playEpisode(currentEpPlaying, switchTo === 'embed'));
+    el.appendChild(btn);
+  }
+}
+
+function playEpisode(ep, forceEmbed=false){
   destroyPlayer();
   const frame = document.getElementById('playerFrame');
   if(!frame) return;
+  currentEpPlaying = ep;
 
   const authUser = getAuth();
   if(authUser && currentMovie){
@@ -1087,31 +1367,65 @@ function playEpisode(ep){
     }).catch(()=>{ /* lỗi lưu lịch sử không nên chặn việc xem phim */ });
   }
 
-  if(ep.m3u8){
-    frame.innerHTML = `<video id="videoPlayer" controls autoplay playsinline></video>`;
+  console.log('[player] tập:', ep.name, '| m3u8:', ep.m3u8 || '(không có)', '| embed:', ep.embed || '(không có)', '| forceEmbed:', forceEmbed);
+
+  const useEmbed = (reason)=>{
+    if(!ep.embed){
+      frame.innerHTML = `<div class="player-placeholder">Không tìm thấy nguồn phát cho tập này.</div>`;
+      setPlayerNote('Tập này không có nguồn phát nào.', true, null);
+      return;
+    }
+    frame.innerHTML = `<iframe src="${escapeHtml(ep.embed)}" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
+    setPlayerNote(reason + ' — đang dùng player nhúng của server ngoài, cử chỉ tùy chỉnh (tua 2 chạm, giữ x2, Shift) không áp dụng được. ', true, ep.m3u8 ? 'm3u8' : null);
+  };
+
+  if(ep.m3u8 && !forceEmbed){
+    frame.innerHTML = `<video id="videoPlayer" autoplay playsinline></video>`;
     const video = document.getElementById('videoPlayer');
     attachPlayerGestures(video, frame);
     if(window.Hls && Hls.isSupported()){
       const hls = new Hls();
+      // Lỗi mạng (thường do CDN chặn CORS/referer khi gọi từ trang ngoài): thử lại 2 lần cho
+      // trường hợp chập chờn thật, rồi tự rơi về player nhúng nhanh chóng — vừa rơi vừa NÓI RÕ
+      // lý do trong ghi chú + để lại nút thử lại m3u8, không âm thầm và không bắt chờ lâu.
+      let netRetries = 0, mediaRetries = 0;
       hls.loadSource(ep.m3u8);
       hls.attachMedia(video);
       hls.on(Hls.Events.ERROR, (evt, data)=>{
-        if(data.fatal && ep.embed){
-          frame.innerHTML = `<iframe src="${escapeHtml(ep.embed)}" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
+        console.warn('[player] HLS error:', data.type, data.details, 'fatal:', data.fatal);
+        if(!data.fatal) return;
+        if(data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 2){
+          netRetries++;
+          setPlayerNote(`Nguồn m3u8 chưa tải được (${data.details}), đang thử lại ${netRetries}/2...`, true, 'embed');
+          setTimeout(()=>{ try{ hls.startLoad(); }catch(e){} }, 500 * netRetries);
+          return;
         }
+        if(data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 2){
+          mediaRetries++;
+          console.warn(`[player] lỗi media, thử recover lần ${mediaRetries}/2...`);
+          try{ hls.recoverMediaError(); return; }catch(e){}
+        }
+        console.warn('[player] hết cách cứu m3u8, chuyển sang player nhúng. Nguyên nhân cuối:', data.details);
+        destroyPlayer();
+        useEmbed(`Nguồn m3u8 bị chặn/lỗi (${data.details || data.type})`);
       });
       state.hls = hls;
+      setPlayerNote('Đang dùng player Quank: 2 chạm 2 bên tua ±10s, giữ 2 bên (điện thoại) hoặc giữ Shift (máy tính) để x2. ', false, ep.embed ? 'embed' : null);
     }else if(video.canPlayType('application/vnd.apple.mpegurl')){
       video.src = ep.m3u8;
-    }else if(ep.embed){
-      frame.innerHTML = `<iframe src="${escapeHtml(ep.embed)}" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
+      video.addEventListener('error', ()=>{
+        destroyPlayer();
+        useEmbed('Nguồn m3u8 bị chặn/lỗi');
+      });
+      setPlayerNote('Đang dùng player Quank (HLS gốc của trình duyệt): 2 chạm 2 bên tua ±10s, giữ 2 bên hoặc giữ Shift để x2. ', false, ep.embed ? 'embed' : null);
     }else{
-      frame.innerHTML = `<div class="player-placeholder">Trình duyệt không hỗ trợ phát video này.</div>`;
+      destroyPlayer();
+      useEmbed('Trình duyệt không phát được m3u8');
     }
-  }else if(ep.embed){
-    frame.innerHTML = `<iframe src="${escapeHtml(ep.embed)}" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
+  }else if(forceEmbed && ep.embed){
+    useEmbed('Bạn đã chọn thủ công');
   }else{
-    frame.innerHTML = `<div class="player-placeholder">Không tìm thấy nguồn phát cho tập này.</div>`;
+    useEmbed('Server/tập này chỉ có link nhúng, không có m3u8');
   }
   frame.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
